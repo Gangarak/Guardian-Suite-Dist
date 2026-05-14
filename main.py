@@ -4,15 +4,16 @@ import json
 import subprocess
 import requests
 import re
+import time
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QPushButton, QLabel, QLineEdit, QHBoxLayout, QComboBox, QTextEdit, QDialog, QMessageBox)
+                             QPushButton, QLabel, QLineEdit, QHBoxLayout, 
+                             QComboBox, QTextEdit, QDialog, QMessageBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIntValidator
 
 # Konfiguration - Marcel (Oberhausen)
-base_path = "C:\\Users\\Marcel\\Guardian-Suite"
-CURRENT_VERSION = "0.1.30"
-
+base_path = r"C:\Users\Marcel\Guardian-Suite"
+CURRENT_VERSION = "0.1.31"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
 
@@ -103,50 +104,41 @@ class GuardianSuite(QMainWindow):
     def check_for_updates(self):
         self.status.setText("Prüfe Version...")
         try:
-            # Cache-Busting durch Zeitstempel, damit GitHub die neue Datei sofort ausliefert
-            import time
             r = requests.get(f"{VERSION_URL}?t={int(time.time())}", timeout=5)
             if r.status_code == 200:
                 match = re.search(r'"version":\s*"([^"]+)"', r.text)
                 if match:
                     remote_v = match.group(1).strip()
                     if remote_v != CURRENT_VERSION:
-                        if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar. Jetzt laden?") == QMessageBox.StandardButton.Yes:
+                        if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar?") == QMessageBox.StandardButton.Yes:
                             self.download_and_install()
                     else: self.status.setText(f"Aktuell (v{CURRENT_VERSION})")
-                else: self.status.setText("Versionsformat ungültig")
-            else: self.status.setText(f"Server-Fehler: {r.status_code}")
         except: self.status.setText("Verbindungsfehler")
 
     def download_and_install(self):
-        self.status.setText("Lade Update...")
         try:
             r = requests.get(UPDATE_URL, timeout=15)
             if r.status_code == 200:
                 new_path = os.path.join(base_path, "main_new.py")
                 with open(new_path, "wb") as f: f.write(r.content)
                 self.trigger_updater()
-            else: self.status.setText("Download-Fehler")
-        except: self.status.setText("Netzwerkfehler")
+        except: pass
 
     def trigger_updater(self):
         batch_path = os.path.join(base_path, "updater.bat")
+        py_exe = sys.executable
         with open(batch_path, "w") as f:
-            f.write(f"@echo off\ntimeout /t 1 /nobreak > nul\nmove /y \"{base_path}\\main_new.py\" \"{base_path}\\main.py\"\nstart /b pythonw \"{base_path}\\main.py\"\nexit\n")
-        subprocess.Popen([batch_path], shell=True)
-        self.close(); sys.exit()
+            f.write(f'@echo off\ntimeout /t 2\nmove /y "{base_path}\\main_new.py" "{base_path}\\main.py"\nstart "" "{py_exe}" "{base_path}\\main.py"\nexit\n')
+        subprocess.Popen([batch_path], shell=True); self.close(); sys.exit()
 
     def send_feedback(self):
         dlg = FeedbackDialog(self)
         if dlg.exec():
             msg = dlg.text_edit.toPlainText().strip()
             if msg:
-                webhook_url = "https://discord.com/api/webhooks/1504479025781936339/NvoI5gDJnYqFZgpE2_TXgXQqEG8q9Ofs4SU5k1ziQfbfY7F8du-pIYKoctw8gYPGUQfm"
-                payload = {"username": "Guardian Bot", "content": f"**Feedback von Marcel:**\n> {msg}"}
-                try:
-                    requests.post(webhook_url, json=payload, timeout=5)
-                    self.status.setText("Feedback gesendet!")
-                except: self.status.setText("Webhook-Fehler")
+                webhook = "https://discord.com/api/webhooks/1504479025781936339/NvoI5gDJnYqFZgpE2_TXgXQqEG8q9Ofs4SU5k1ziQfbfY7F8du-pIYKoctw8gYPGUQfm"
+                try: requests.post(webhook, json={"content": f"**Feedback v{CURRENT_VERSION}:**\n> {msg}"})
+                except: pass
 
     def switch_profile(self):
         p = self.profiles.get(self.profile_box.currentText(), {"cpu": 80, "gpu": 70, "ram": 95})
@@ -154,31 +146,18 @@ class GuardianSuite(QMainWindow):
 
     def save_profile(self):
         name = self.profile_box.currentText()
-        try:
-            self.profiles[name] = {"cpu": int(self.in_cpu.text()), "gpu": int(self.in_gpu.text()), "ram": int(self.in_ram.text())}
-            with open(self.config_path, "w") as f: json.dump(self.profiles, f, indent=4)
-            self.status.setText(f"Profil '{name}' gesichert.")
-        except: self.status.setText("Bitte nur Zahlen!")
+        self.profiles[name] = {"cpu": int(self.in_cpu.text()), "gpu": int(self.in_gpu.text()), "ram": int(self.in_ram.text())}
+        with open(self.config_path, "w") as f: json.dump(self.profiles, f, indent=4)
+        self.status.setText("Profil gesichert.")
 
     def toggle(self, key, file, btn):
         path = os.path.join(base_path, file)
-        if self.processes[key] is not None:
-            if self.processes[key].poll() is not None: 
-                self.processes[key] = None
-
-        if self.processes[key] is None:
-            pythonw = sys.executable.replace("python.exe", "pythonw.exe")
-            # FIX: Strengere Prozess-Trennung gegen Fenster-Spam
-            self.processes[key] = subprocess.Popen(
-                [pythonw, path], 
-                creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008, 
-                close_fds=True
-            )
+        if self.processes[key] is None or self.processes[key].poll() is not None:
+            self.processes[key] = subprocess.Popen([sys.executable, path], creationflags=subprocess.CREATE_NO_WINDOW)
             btn.setText(f"{key} STOPPEN")
             btn.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else:
-            self.processes[key].terminate()
-            self.processes[key] = None
+            self.processes[key].terminate(); self.processes[key] = None
             btn.setText(f"{key} STARTEN")
             btn.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
 
