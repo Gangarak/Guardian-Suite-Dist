@@ -12,8 +12,12 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPoint
 from PyQt6.QtGui import QIntValidator, QPainter, QColor, QPen, QFont
 
-# Konfiguration - Marcel (Oberhausen)
-base_path = r"C:\Users\Marcel\Guardian-Suite"
+# Dynamischer Pfad für EXE-Betrieb
+if getattr(sys, 'frozen', False):
+    base_path = os.path.dirname(sys.executable)
+else:
+    base_path = r"C:\Users\Marcel\Guardian-Suite"
+
 CURRENT_VERSION = "0.1.34"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
@@ -77,11 +81,11 @@ class DashboardWindow(QWidget):
             self.move(self.pos() + e.globalPosition().toPoint() - self.dragPos)
             self.dragPos = e.globalPosition().toPoint()
 
-class HUDOverlay(QWidget):
-    """Kompaktes, durchklickbares Overlay für die Bildschirmecke."""
+cclass HUDOverlay(QWidget):
+    """Kompaktes, durchklickbares Overlay."""
     def __init__(self):
         super().__init__()
-        # WindowStaysOnTop + Tool + WindowTransparentForInput macht es durchklickbar
+        # WindowTransparentForInput ermöglicht das Durchklicken im Spiel
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | 
             Qt.WindowType.WindowStaysOnTopHint | 
@@ -112,7 +116,7 @@ class HUDOverlay(QWidget):
         self.timer.timeout.connect(self.update_stats)
         self.timer.start(1000)
         
-        # Fest verankert oben links (10px Abstand)
+        # Fest verankert oben links
         self.move(10, 10)
 
     def create_label(self, text):
@@ -129,7 +133,7 @@ class HUDOverlay(QWidget):
         self.l_cpu.setText(f"CPU: {cpu}%")
         self.l_ram.setText(f"RAM: {ram}%")
         self.l_net.setText(f"NET: {net_val} MB/s")
-
+      
 class GuardianSuite(QMainWindow):
     def __init__(self):
         super().__init__()
