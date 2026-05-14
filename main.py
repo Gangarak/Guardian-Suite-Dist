@@ -11,7 +11,7 @@ from PyQt6.QtGui import QIntValidator
 
 # Konfiguration - Marcel (Oberhausen)
 base_path = "C:\\Users\\Marcel\\Guardian-Suite"
-CURRENT_VERSION = "0.1.27"
+CURRENT_VERSION = "0.1.28"
 
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
@@ -160,13 +160,27 @@ class GuardianSuite(QMainWindow):
 
     def toggle(self, key, file, btn):
         path = os.path.join(base_path, file)
+        # Überprüfen, ob der Prozess wirklich noch läuft
+        if self.processes[key] is not None:
+            if self.processes[key].poll() is not None: # Prozess ist bereits beendet
+                self.processes[key] = None
+
         if self.processes[key] is None:
+            # Starte absolut leise ohne Kopplung
             pythonw = sys.executable.replace("python.exe", "pythonw.exe")
-            self.processes[key] = subprocess.Popen([pythonw, path], creationflags=subprocess.CREATE_NO_WINDOW)
-            btn.setText(f"{key} STOPPEN"); btn.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
+            # DETACHED_PROCESS (0x00000008) sorgt dafür, dass kein neues Fenster erzeugt wird
+            self.processes[key] = subprocess.Popen(
+                [pythonw, path], 
+                creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008,
+                close_fds=True
+            )
+            btn.setText(f"{key} STOPPEN")
+            btn.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else:
-            self.processes[key].terminate(); self.processes[key] = None
-            btn.setText(f"{key} STARTEN"); btn.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
+            self.processes[key].terminate()
+            self.processes[key] = None
+            btn.setText(f"{key} STARTEN")
+            btn.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv); w = GuardianSuite(); w.show(); sys.exit(app.exec())
