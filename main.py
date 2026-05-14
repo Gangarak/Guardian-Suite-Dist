@@ -6,7 +6,7 @@ import requests
 import re
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QPushButton, QLabel, QLineEdit, QHBoxLayout, QComboBox, QTextEdit, QDialog, QMessageBox)
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIntValidator
 
 # Konfiguration - Marcel (Oberhausen)
@@ -103,11 +103,13 @@ class GuardianSuite(QMainWindow):
     def check_for_updates(self):
         self.status.setText("Prüfe Version...")
         try:
-            r = requests.get(VERSION_URL, timeout=5)
+            # Cache-Busting durch Zeitstempel, damit GitHub die neue Datei sofort ausliefert
+            import time
+            r = requests.get(f"{VERSION_URL}?t={int(time.time())}", timeout=5)
             if r.status_code == 200:
                 match = re.search(r'"version":\s*"([^"]+)"', r.text)
                 if match:
-                    remote_v = match.group(1)
+                    remote_v = match.group(1).strip()
                     if remote_v != CURRENT_VERSION:
                         if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar. Jetzt laden?") == QMessageBox.StandardButton.Yes:
                             self.download_and_install()
@@ -160,18 +162,16 @@ class GuardianSuite(QMainWindow):
 
     def toggle(self, key, file, btn):
         path = os.path.join(base_path, file)
-        # Überprüfen, ob der Prozess wirklich noch läuft
         if self.processes[key] is not None:
-            if self.processes[key].poll() is not None: # Prozess ist bereits beendet
+            if self.processes[key].poll() is not None: 
                 self.processes[key] = None
 
         if self.processes[key] is None:
-            # Starte absolut leise ohne Kopplung
             pythonw = sys.executable.replace("python.exe", "pythonw.exe")
-            # DETACHED_PROCESS (0x00000008) sorgt dafür, dass kein neues Fenster erzeugt wird
+            # FIX: Strengere Prozess-Trennung gegen Fenster-Spam
             self.processes[key] = subprocess.Popen(
                 [pythonw, path], 
-                creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008,
+                creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008, 
                 close_fds=True
             )
             btn.setText(f"{key} STOPPEN")
