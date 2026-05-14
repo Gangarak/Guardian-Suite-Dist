@@ -271,19 +271,28 @@ class GuardianSuite(QMainWindow):
             self.hud_overlay.close(); self.hud_overlay = None
             self.btn_hud.setText("HUD OVERLAY AKTIVIEREN"); self.btn_hud.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
 
-    def check_for_updates(self):
+def check_for_updates(self):
         self.status.setText("Prüfe Version...")
+        # Header hinzufügen, um wie ein Browser auszusehen (verhindert Blockaden)
+        headers = {'User-Agent': 'Mozilla/5.0'}
         try:
-            r = requests.get(f"{VERSION_URL}?t={int(time.time())}", timeout=5)
+            # t= Zeitstempel verhindert, dass Windows eine alte Version aus dem Cache lädt
+            r = requests.get(f"{VERSION_URL}?t={int(time.time())}", headers=headers, timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 remote_v = data.get("version", "")
                 if remote_v != CURRENT_VERSION:
-                    if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar. Jetzt laden?") == QMessageBox.StandardButton.Yes:
+                    self.status.setText(f"Update v{remote_v} verfügbar!")
+                    if QMessageBox.question(self, "Update verfügbar", f"Version {remote_v} ist da. Jetzt installieren?") == QMessageBox.StandardButton.Yes:
                         self.download_and_install()
-                else: self.status.setText(f"Aktuell (v{CURRENT_VERSION})")
-        except: self.status.setText("Verbindungsfehler")
-
+                else:
+                    self.status.setText(f"v{CURRENT_VERSION} ist aktuell.")
+            else:
+                self.status.setText(f"Server-Fehler: {r.status_code}")
+        except Exception as e:
+            print(f"Update Fehler: {e}")
+            self.status.setText("Keine Verbindung zum Server")
+          
     def download_and_install(self):
         try:
             r = requests.get(UPDATE_URL, timeout=15)
