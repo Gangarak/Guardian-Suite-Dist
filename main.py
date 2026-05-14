@@ -1,4 +1,3 @@
-@'
 import sys
 import os
 import json
@@ -11,7 +10,7 @@ from PyQt6.QtGui import QIntValidator
 
 # Konfiguration - Marcel (Oberhausen)
 base_path = "C:\\Users\\Marcel\\Guardian-Suite"
-CURRENT_VERSION = 2026.36 
+CURRENT_VERSION = 2026.37 
 
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
@@ -170,4 +169,3 @@ class GuardianSuite(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv); w = GuardianSuite(); w.show(); sys.exit(app.exec())
-'@ | Out-File -FilePath "C:\Users\Marcel\Guardian-Suite\main.py" -Encoding utf8 -Force
