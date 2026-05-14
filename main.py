@@ -14,14 +14,11 @@ from PyQt6.QtGui import QIntValidator, QPainter, QColor, QPen, QFont
 
 # Konfiguration - Marcel (Oberhausen)
 base_path = r"C:\Users\Marcel\Guardian-Suite"
-CURRENT_VERSION = "0.1.31"
+CURRENT_VERSION = "0.1.33"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
 
-# --- DASHBOARD KOMPONENTEN ---
-
 class CircularGauge(QWidget):
-    """Die kreisförmige Anzeige aus dem Dashboard-Layout."""
     def __init__(self, label, unit, color="#00ff99"):
         super().__init__()
         self.value = 0
@@ -37,55 +34,32 @@ class CircularGauge(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Hintergrund-Kreis (Dunkel)
-        pen = QPen(QColor(40, 40, 40))
-        pen.setWidth(12)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen = QPen(QColor(40, 40, 40)); pen.setWidth(12); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawArc(QRectF(20, 20, 140, 140), -225 * 16, 270 * 16)
-        
-        # Fortschritt (Neon-Grün)
         if self.value > 0:
-            pen.setColor(self.color)
-            painter.setPen(pen)
+            pen.setColor(self.color); painter.setPen(pen)
             span = int(min(float(self.value), 100.0) * 270 / 100)
             painter.drawArc(QRectF(20, 20, 140, 140), -225 * 16, -span * 16)
-            
-        # Text-Anzeigen
-        painter.setPen(QColor("#00ff99"))
-        painter.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        painter.setPen(QColor("#00ff99")); painter.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
         painter.drawText(QRectF(0, 55, 180, 40), Qt.AlignmentFlag.AlignCenter, f"{int(self.value)}")
         painter.setFont(QFont("Segoe UI", 11))
         painter.drawText(QRectF(0, 95, 180, 25), Qt.AlignmentFlag.AlignCenter, self.unit_text)
-        painter.setPen(QColor("#ffffff"))
-        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.setPen(QColor("#ffffff")); painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         painter.drawText(QRectF(0, 185, 180, 30), Qt.AlignmentFlag.AlignCenter, self.label_text)
 
 class DashboardWindow(QWidget):
-    """Das separate Dashboard-Fenster (Rahmenlos & Beweglich)."""
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setStyleSheet("background-color: #050505;")
         self.setFixedSize(800, 280)
-        
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        self.cpu_g = CircularGauge("CPU LAST", "%")
-        self.gpu_g = CircularGauge("GPU TEMP", "°C")
-        self.ram_g = CircularGauge("RAM LAST", "%")
-        self.net_g = CircularGauge("INTERNET", "MB/s")
-        
-        for g in [self.cpu_g, self.gpu_g, self.ram_g, self.net_g]:
-            layout.addWidget(g)
-            
-        psutil.cpu_percent()
-        self.last_net = psutil.net_io_counters().bytes_recv
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.refresh)
-        self.timer.start(1000)
+        layout = QHBoxLayout(self); layout.setContentsMargins(10, 10, 10, 10)
+        self.cpu_g = CircularGauge("CPU LAST", "%"); self.gpu_g = CircularGauge("GPU TEMP", "°C")
+        self.ram_g = CircularGauge("RAM LAST", "%"); self.net_g = CircularGauge("INTERNET", "MB/s")
+        for g in [self.cpu_g, self.gpu_g, self.ram_g, self.net_g]: layout.addWidget(g)
+        psutil.cpu_percent(); self.last_net = psutil.net_io_counters().bytes_recv
+        self.timer = QTimer(); self.timer.timeout.connect(self.refresh); self.timer.start(1000)
         self.dragPos = QPoint()
 
     def refresh(self):
@@ -97,41 +71,76 @@ class DashboardWindow(QWidget):
         self.gpu_g.set_value(55)
 
     def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton:
-            self.dragPos = e.globalPosition().toPoint()
-
+        if e.button() == Qt.MouseButton.LeftButton: self.dragPos = e.globalPosition().toPoint()
     def mouseMoveEvent(self, e):
         if e.buttons() == Qt.MouseButton.LeftButton:
             self.move(self.pos() + e.globalPosition().toPoint() - self.dragPos)
             self.dragPos = e.globalPosition().toPoint()
 
-# --- HAUPTPROGRAMM ---
-
-class FeedbackDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Guardian Feedback")
-        self.setFixedSize(350, 250)
-        self.setStyleSheet("background-color: #0a0a0a; color: #fff; border: 1px solid #00ff99;")
+class HUDOverlay(QWidget):
+    """Kompaktes Overlay mit CPU, GPU, RAM und Netzwerk."""
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(280, 120)
+        
         layout = QVBoxLayout(self)
-        self.text_edit = QTextEdit()
-        self.text_edit.setPlaceholderText("Was können wir verbessern?")
-        self.text_edit.setStyleSheet("background: #000; border: 1px solid #333; color: #00ff99; padding: 5px;")
-        layout.addWidget(QLabel("FEEDBACK AN ENTWICKLER:"))
-        layout.addWidget(self.text_edit)
-        btn = QPushButton("SENDEN")
-        btn.setStyleSheet("background: #00ff99; color: #000; font-weight: bold; padding: 10px;")
-        btn.clicked.connect(self.accept)
-        layout.addWidget(btn)
+        self.container = QWidget()
+        self.container.setStyleSheet("background-color: rgba(5, 5, 5, 220); border: 1px solid #00ff99; border-radius: 8px;")
+        grid = QVBoxLayout(self.container)
+        
+        self.l_cpu = self.create_label("CPU: 0%")
+        self.l_gpu = self.create_label("GPU: 55°C")
+        self.l_ram = self.create_label("RAM: 0%")
+        self.l_net = self.create_label("NET: 0.0 MB/s")
+        
+        for l in [self.l_cpu, self.l_gpu, self.l_ram, self.l_net]:
+            grid.addWidget(l)
+            
+        layout.addWidget(self.container)
+        
+        psutil.cpu_percent()
+        self.last_net = psutil.net_io_counters().bytes_recv
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_stats)
+        self.timer.start(1000)
+        
+        self.dragPos = QPoint()
+        self.move(30, 30)
+
+    def create_label(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet("color: #00ff99; font-family: 'Segoe UI'; font-size: 12px; font-weight: bold; border: none;")
+        return lbl
+
+    def update_stats(self):
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        now_net = psutil.net_io_counters().bytes_recv
+        net_val = round((now_net - self.last_net) / (1024 * 1024), 1)
+        self.last_net = now_net
+        
+        self.l_cpu.setText(f"CPU: {cpu}%")
+        self.l_ram.setText(f"RAM: {ram}%")
+        self.l_net.setText(f"NET: {net_val} MB/s")
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton: self.dragPos = e.globalPosition().toPoint()
+    def mouseMoveEvent(self, e):
+        if e.buttons() == Qt.MouseButton.LeftButton:
+            self.move(self.pos() + e.globalPosition().toPoint() - self.dragPos)
+            self.dragPos = e.globalPosition().toPoint()
 
 class GuardianSuite(QMainWindow):
     def __init__(self):
         super().__init__()
         self.config_path = os.path.join(base_path, "profiles.json")
         self.dash_window = None
+        self.hud_overlay = None
         self.load_config()
         self.setWindowTitle(f"Guardian Suite v{CURRENT_VERSION}")
-        self.setFixedSize(400, 800) 
+        self.setFixedSize(400, 850) 
         self.init_ui()
 
     def load_config(self):
@@ -178,11 +187,15 @@ class GuardianSuite(QMainWindow):
 
         layout.addStretch()
         
-        # Dashboard Toggle Button
         self.btn_dash = QPushButton("DASHBOARD STARTEN")
         self.btn_dash.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
         self.btn_dash.clicked.connect(self.toggle_dashboard)
         layout.addWidget(self.btn_dash)
+
+        self.btn_hud = QPushButton("HUD OVERLAY AKTIVIEREN")
+        self.btn_hud.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
+        self.btn_hud.clicked.connect(self.toggle_hud)
+        layout.addWidget(self.btn_hud)
 
     def add_row(self, layout, label, min_v, max_v):
         row = QHBoxLayout(); row.addWidget(QLabel(label))
@@ -193,15 +206,19 @@ class GuardianSuite(QMainWindow):
 
     def toggle_dashboard(self):
         if self.dash_window is None:
-            self.dash_window = DashboardWindow()
-            self.dash_window.show()
-            self.btn_dash.setText("DASHBOARD STOPPEN")
-            self.btn_dash.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
+            self.dash_window = DashboardWindow(); self.dash_window.show()
+            self.btn_dash.setText("DASHBOARD STOPPEN"); self.btn_dash.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else:
-            self.dash_window.close()
-            self.dash_window = None
-            self.btn_dash.setText("DASHBOARD STARTEN")
-            self.btn_dash.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
+            self.dash_window.close(); self.dash_window = None
+            self.btn_dash.setText("DASHBOARD STARTEN"); self.btn_dash.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
+
+    def toggle_hud(self):
+        if self.hud_overlay is None:
+            self.hud_overlay = HUDOverlay(); self.hud_overlay.show()
+            self.btn_hud.setText("HUD DEAKTIVIEREN"); self.btn_hud.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
+        else:
+            self.hud_overlay.close(); self.hud_overlay = None
+            self.btn_hud.setText("HUD OVERLAY AKTIVIEREN"); self.btn_hud.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
 
     def check_for_updates(self):
         self.status.setText("Prüfe Version...")
@@ -234,9 +251,11 @@ class GuardianSuite(QMainWindow):
         subprocess.Popen([batch_path], shell=True); self.close(); sys.exit()
 
     def send_feedback(self):
-        dlg = FeedbackDialog(self)
+        dlg = QDialog(self); dlg.setWindowTitle("Feedback"); dlg.setFixedSize(300, 200)
+        layout = QVBoxLayout(dlg); edit = QTextEdit(); layout.addWidget(edit)
+        btn = QPushButton("Senden"); btn.clicked.connect(dlg.accept); layout.addWidget(btn)
         if dlg.exec():
-            msg = dlg.text_edit.toPlainText().strip()
+            msg = edit.toPlainText().strip()
             if msg:
                 webhook = "https://discord.com/api/webhooks/1504479025781936339/NvoI5gDJnYqFZgpE2_TXgXQqEG8q9Ofs4SU5k1ziQfbfY7F8du-pIYKoctw8gYPGUQfm"
                 try: requests.post(webhook, json={"content": f"**Feedback v{CURRENT_VERSION}:**\n> {msg}"})
@@ -253,7 +272,4 @@ class GuardianSuite(QMainWindow):
         self.status.setText("Profil gesichert.")
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    w = GuardianSuite()
-    w.show()
-    sys.exit(app.exec())
+    app = QApplication(sys.argv); w = GuardianSuite(); w.show(); sys.exit(app.exec())
