@@ -5,17 +5,107 @@ import subprocess
 import requests
 import re
 import time
+import psutil
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QPushButton, QLabel, QLineEdit, QHBoxLayout, 
                              QComboBox, QTextEdit, QDialog, QMessageBox)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIntValidator
+from PyQt6.QtCore import Qt, QTimer, QRectF, QPoint
+from PyQt6.QtGui import QIntValidator, QPainter, QColor, QPen, QFont
 
 # Konfiguration - Marcel (Oberhausen)
 base_path = r"C:\Users\Marcel\Guardian-Suite"
 CURRENT_VERSION = "0.1.31"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
+
+# --- DASHBOARD KOMPONENTEN ---
+
+class CircularGauge(QWidget):
+    """Die kreisförmige Anzeige aus dem Dashboard-Layout."""
+    def __init__(self, label, unit, color="#00ff99"):
+        super().__init__()
+        self.value = 0
+        self.label_text = label
+        self.unit_text = unit
+        self.color = QColor(color)
+        self.setFixedSize(180, 220)
+
+    def set_value(self, val):
+        self.value = val
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Hintergrund-Kreis (Dunkel)
+        pen = QPen(QColor(40, 40, 40))
+        pen.setWidth(12)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawArc(QRectF(20, 20, 140, 140), -225 * 16, 270 * 16)
+        
+        # Fortschritt (Neon-Grün)
+        if self.value > 0:
+            pen.setColor(self.color)
+            painter.setPen(pen)
+            span = int(min(float(self.value), 100.0) * 270 / 100)
+            painter.drawArc(QRectF(20, 20, 140, 140), -225 * 16, -span * 16)
+            
+        # Text-Anzeigen
+        painter.setPen(QColor("#00ff99"))
+        painter.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        painter.drawText(QRectF(0, 55, 180, 40), Qt.AlignmentFlag.AlignCenter, f"{int(self.value)}")
+        painter.setFont(QFont("Segoe UI", 11))
+        painter.drawText(QRectF(0, 95, 180, 25), Qt.AlignmentFlag.AlignCenter, self.unit_text)
+        painter.setPen(QColor("#ffffff"))
+        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        painter.drawText(QRectF(0, 185, 180, 30), Qt.AlignmentFlag.AlignCenter, self.label_text)
+
+class DashboardWindow(QWidget):
+    """Das separate Dashboard-Fenster (Rahmenlos & Beweglich)."""
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setStyleSheet("background-color: #050505;")
+        self.setFixedSize(800, 280)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.cpu_g = CircularGauge("CPU LAST", "%")
+        self.gpu_g = CircularGauge("GPU TEMP", "°C")
+        self.ram_g = CircularGauge("RAM LAST", "%")
+        self.net_g = CircularGauge("INTERNET", "MB/s")
+        
+        for g in [self.cpu_g, self.gpu_g, self.ram_g, self.net_g]:
+            layout.addWidget(g)
+            
+        psutil.cpu_percent()
+        self.last_net = psutil.net_io_counters().bytes_recv
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(1000)
+        self.dragPos = QPoint()
+
+    def refresh(self):
+        now_net = psutil.net_io_counters().bytes_recv
+        self.cpu_g.set_value(psutil.cpu_percent())
+        self.ram_g.set_value(psutil.virtual_memory().percent)
+        self.net_g.set_value(round((now_net - self.last_net) / (1024 * 1024), 1))
+        self.last_net = now_net
+        self.gpu_g.set_value(55)
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.dragPos = e.globalPosition().toPoint()
+
+    def mouseMoveEvent(self, e):
+        if e.buttons() == Qt.MouseButton.LeftButton:
+            self.move(self.pos() + e.globalPosition().toPoint() - self.dragPos)
+            self.dragPos = e.globalPosition().toPoint()
+
+# --- HAUPTPROGRAMM ---
 
 class FeedbackDialog(QDialog):
     def __init__(self, parent=None):
@@ -38,10 +128,10 @@ class GuardianSuite(QMainWindow):
     def __init__(self):
         super().__init__()
         self.config_path = os.path.join(base_path, "profiles.json")
-        self.processes = {"HUD": None, "Dashboard": None}
+        self.dash_window = None
         self.load_config()
         self.setWindowTitle(f"Guardian Suite v{CURRENT_VERSION}")
-        self.setFixedSize(400, 850) 
+        self.setFixedSize(400, 800) 
         self.init_ui()
 
     def load_config(self):
@@ -87,8 +177,12 @@ class GuardianSuite(QMainWindow):
         self.status.setStyleSheet("color: #00ff99; font-style: italic;"); layout.addWidget(self.status)
 
         layout.addStretch()
-        self.add_mod_btn(layout, "DASHBOARD STARTEN", "dashboard.py", "Dashboard")
-        self.add_mod_btn(layout, "HUD STARTEN", "hud.py", "HUD")
+        
+        # Dashboard Toggle Button
+        self.btn_dash = QPushButton("DASHBOARD STARTEN")
+        self.btn_dash.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
+        self.btn_dash.clicked.connect(self.toggle_dashboard)
+        layout.addWidget(self.btn_dash)
 
     def add_row(self, layout, label, min_v, max_v):
         row = QHBoxLayout(); row.addWidget(QLabel(label))
@@ -97,9 +191,17 @@ class GuardianSuite(QMainWindow):
         edit.setStyleSheet("color: #00ff99; background: #000; border: 1px solid #00ff99; padding: 5px;")
         row.addStretch(); row.addWidget(edit); layout.addLayout(row); return edit
 
-    def add_mod_btn(self, layout, txt, file, key):
-        btn = QPushButton(txt); btn.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
-        btn.clicked.connect(lambda: self.toggle(key, file, btn)); layout.addWidget(btn)
+    def toggle_dashboard(self):
+        if self.dash_window is None:
+            self.dash_window = DashboardWindow()
+            self.dash_window.show()
+            self.btn_dash.setText("DASHBOARD STOPPEN")
+            self.btn_dash.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
+        else:
+            self.dash_window.close()
+            self.dash_window = None
+            self.btn_dash.setText("DASHBOARD STARTEN")
+            self.btn_dash.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
 
     def check_for_updates(self):
         self.status.setText("Prüfe Version...")
@@ -150,16 +252,8 @@ class GuardianSuite(QMainWindow):
         with open(self.config_path, "w") as f: json.dump(self.profiles, f, indent=4)
         self.status.setText("Profil gesichert.")
 
-    def toggle(self, key, file, btn):
-        path = os.path.join(base_path, file)
-        if self.processes[key] is None or self.processes[key].poll() is not None:
-            self.processes[key] = subprocess.Popen([sys.executable, path], creationflags=subprocess.CREATE_NO_WINDOW)
-            btn.setText(f"{key} STOPPEN")
-            btn.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
-        else:
-            self.processes[key].terminate(); self.processes[key] = None
-            btn.setText(f"{key} STARTEN")
-            btn.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
-
 if __name__ == "__main__":
-    app = QApplication(sys.argv); w = GuardianSuite(); w.show(); sys.exit(app.exec())
+    app = QApplication(sys.argv)
+    w = GuardianSuite()
+    w.show()
+    sys.exit(app.exec())
