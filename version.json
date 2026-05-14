@@ -1,4 +1,4 @@
 {
-  "version": "0.1.27",
-  "changelog": "Webhook-Fix und Update-System implementiert"
+  "version": "0.1.28",
+  "changelog": "Stoppt Loop-Fehler beim Dashboard-Start"
 }
