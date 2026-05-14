@@ -18,7 +18,7 @@ if getattr(sys, 'frozen', False):
 else:
     base_path = r"C:\Users\Marcel\Guardian-Suite"
 
-CURRENT_VERSION = "0.1.34"
+CURRENT_VERSION = "0.1.35"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
 
@@ -28,64 +28,96 @@ class CircularGauge(QWidget):
         self.value = 0
         self.label_text = label
         self.unit_text = unit
-        self.color = QColor(color)
+        self.default_color = QColor(color)
+        self.current_color = self.default_color
         self.setFixedSize(180, 220)
 
-    def set_value(self, val):
+    def set_value(self, val, alert=False):
         self.value = val
+        self.current_color = QColor("#ff4444") if alert else self.default_color
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(QColor(40, 40, 40)); pen.setWidth(12); pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        
+        # Hintergrund-Ring
+        pen = QPen(QColor(40, 40, 40))
+        pen.setWidth(12)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawArc(QRectF(20, 20, 140, 140), -225 * 16, 270 * 16)
+        
+        # Aktiver Wert-Ring
         if self.value > 0:
-            pen.setColor(self.color); painter.setPen(pen)
+            pen.setColor(self.current_color)
+            painter.setPen(pen)
             span = int(min(float(self.value), 100.0) * 270 / 100)
             painter.drawArc(QRectF(20, 20, 140, 140), -225 * 16, -span * 16)
-        painter.setPen(QColor("#00ff99")); painter.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+            
+        painter.setPen(self.current_color)
+        painter.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
         painter.drawText(QRectF(0, 55, 180, 40), Qt.AlignmentFlag.AlignCenter, f"{int(self.value)}")
+        
         painter.setFont(QFont("Segoe UI", 11))
         painter.drawText(QRectF(0, 95, 180, 25), Qt.AlignmentFlag.AlignCenter, self.unit_text)
-        painter.setPen(QColor("#ffffff")); painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        
+        painter.setPen(QColor("#ffffff"))
+        painter.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         painter.drawText(QRectF(0, 185, 180, 30), Qt.AlignmentFlag.AlignCenter, self.label_text)
 
 class DashboardWindow(QWidget):
-    def __init__(self):
+    def __init__(self, main_app):
         super().__init__()
+        self.main_app = main_app
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setStyleSheet("background-color: #050505;")
         self.setFixedSize(800, 280)
-        layout = QHBoxLayout(self); layout.setContentsMargins(10, 10, 10, 10)
-        self.cpu_g = CircularGauge("CPU LAST", "%"); self.gpu_g = CircularGauge("GPU TEMP", "°C")
-        self.ram_g = CircularGauge("RAM LAST", "%"); self.net_g = CircularGauge("INTERNET", "MB/s")
-        for g in [self.cpu_g, self.gpu_g, self.ram_g, self.net_g]: layout.addWidget(g)
-        psutil.cpu_percent(); self.last_net = psutil.net_io_counters().bytes_recv
-        self.timer = QTimer(); self.timer.timeout.connect(self.refresh); self.timer.start(1000)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        self.cpu_g = CircularGauge("CPU LAST", "%")
+        self.gpu_g = CircularGauge("GPU TEMP", "°C")
+        self.ram_g = CircularGauge("RAM LAST", "%")
+        self.net_g = CircularGauge("INTERNET", "MB/s")
+        
+        for g in [self.cpu_g, self.gpu_g, self.ram_g, self.net_g]:
+            layout.addWidget(g)
+            
+        psutil.cpu_percent()
+        self.last_net = psutil.net_io_counters().bytes_recv
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.refresh)
+        self.timer.start(1000)
         self.dragPos = QPoint()
 
     def refresh(self):
+        cpu = psutil.cpu_percent()
+        ram = psutil.virtual_memory().percent
+        gpu = 55  # Platzhalter für GPU
         now_net = psutil.net_io_counters().bytes_recv
-        self.cpu_g.set_value(psutil.cpu_percent())
-        self.ram_g.set_value(psutil.virtual_memory().percent)
-        self.net_g.set_value(round((now_net - self.last_net) / (1024 * 1024), 1))
+        net_val = round((now_net - self.last_net) / (1024 * 1024), 1)
         self.last_net = now_net
-        self.gpu_g.set_value(55)
+        
+        limits = self.main_app.get_current_limits()
+        self.cpu_g.set_value(cpu, alert=(cpu > limits['cpu']))
+        self.ram_g.set_value(ram, alert=(ram > limits['ram']))
+        self.gpu_g.set_value(gpu, alert=(gpu > limits['gpu']))
+        self.net_g.set_value(net_val)
 
     def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton: self.dragPos = e.globalPosition().toPoint()
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.dragPos = e.globalPosition().toPoint()
+            
     def mouseMoveEvent(self, e):
         if e.buttons() == Qt.MouseButton.LeftButton:
             self.move(self.pos() + e.globalPosition().toPoint() - self.dragPos)
             self.dragPos = e.globalPosition().toPoint()
 
-cclass HUDOverlay(QWidget):
-    """Kompaktes, durchklickbares Overlay."""
-    def __init__(self):
+class HUDOverlay(QWidget):
+    def __init__(self, main_app):
         super().__init__()
-        # WindowTransparentForInput ermöglicht das Durchklicken im Spiel
+        self.main_app = main_app
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | 
             Qt.WindowType.WindowStaysOnTopHint | 
@@ -93,11 +125,11 @@ cclass HUDOverlay(QWidget):
             Qt.WindowType.WindowTransparentForInput
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(280, 120)
+        self.setFixedSize(280, 130)
         
         layout = QVBoxLayout(self)
         self.container = QWidget()
-        self.container.setStyleSheet("background-color: rgba(5, 5, 5, 180); border: 1px solid #00ff99; border-radius: 8px;")
+        self.container.setStyleSheet("background-color: rgba(5, 5, 5, 200); border: 1px solid #00ff99; border-radius: 8px;")
         grid = QVBoxLayout(self.container)
         
         self.l_cpu = self.create_label("CPU: 0%")
@@ -107,7 +139,6 @@ cclass HUDOverlay(QWidget):
         
         for l in [self.l_cpu, self.l_gpu, self.l_ram, self.l_net]:
             grid.addWidget(l)
-            
         layout.addWidget(self.container)
         
         psutil.cpu_percent()
@@ -115,25 +146,33 @@ cclass HUDOverlay(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_stats)
         self.timer.start(1000)
-        
-        # Fest verankert oben links
         self.move(10, 10)
 
     def create_label(self, text):
         lbl = QLabel(text)
-        lbl.setStyleSheet("color: #00ff99; font-family: 'Segoe UI'; font-size: 12px; font-weight: bold; border: none;")
+        lbl.setStyleSheet("color: #00ff99; font-family: 'Segoe UI'; font-size: 13px; font-weight: bold; border: none;")
         return lbl
 
     def update_stats(self):
         cpu = psutil.cpu_percent()
         ram = psutil.virtual_memory().percent
+        gpu = 55
         now_net = psutil.net_io_counters().bytes_recv
         net_val = round((now_net - self.last_net) / (1024 * 1024), 1)
         self.last_net = now_net
-        self.l_cpu.setText(f"CPU: {cpu}%")
-        self.l_ram.setText(f"RAM: {ram}%")
+        
+        limits = self.main_app.get_current_limits()
+        
+        self.update_label(self.l_cpu, f"CPU: {cpu}%", cpu > limits['cpu'])
+        self.update_label(self.l_ram, f"RAM: {ram}%", ram > limits['ram'])
+        self.update_label(self.l_gpu, f"GPU: {gpu}°C", gpu > limits['gpu'])
         self.l_net.setText(f"NET: {net_val} MB/s")
-      
+
+    def update_label(self, lbl, text, alert):
+        color = "#ff4444" if alert else "#00ff99"
+        lbl.setText(text)
+        lbl.setStyleSheet(f"color: {color}; font-family: 'Segoe UI'; font-size: 13px; font-weight: bold; border: none;")
+
 class GuardianSuite(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -152,6 +191,16 @@ class GuardianSuite(QMainWindow):
                 with open(self.config_path, "r") as f: self.profiles = json.load(f)
             except: self.profiles = default
         else: self.profiles = default
+
+    def get_current_limits(self):
+        try:
+            return {
+                "cpu": int(self.in_cpu.text()),
+                "gpu": int(self.in_gpu.text()),
+                "ram": int(self.in_ram.text())
+            }
+        except:
+            return {"cpu": 80, "gpu": 70, "ram": 95}
 
     def init_ui(self):
         self.setStyleSheet("QMainWindow { background-color: #050505; } QWidget { color: #e0e0e0; font-family: 'Segoe UI'; }")
@@ -208,7 +257,7 @@ class GuardianSuite(QMainWindow):
 
     def toggle_dashboard(self):
         if self.dash_window is None:
-            self.dash_window = DashboardWindow(); self.dash_window.show()
+            self.dash_window = DashboardWindow(self); self.dash_window.show()
             self.btn_dash.setText("DASHBOARD STOPPEN"); self.btn_dash.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else:
             self.dash_window.close(); self.dash_window = None
@@ -216,7 +265,7 @@ class GuardianSuite(QMainWindow):
 
     def toggle_hud(self):
         if self.hud_overlay is None:
-            self.hud_overlay = HUDOverlay(); self.hud_overlay.show()
+            self.hud_overlay = HUDOverlay(self); self.hud_overlay.show()
             self.btn_hud.setText("HUD DEAKTIVIEREN"); self.btn_hud.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else:
             self.hud_overlay.close(); self.hud_overlay = None
@@ -227,13 +276,12 @@ class GuardianSuite(QMainWindow):
         try:
             r = requests.get(f"{VERSION_URL}?t={int(time.time())}", timeout=5)
             if r.status_code == 200:
-                match = re.search(r'"version":\s*"([^"]+)"', r.text)
-                if match:
-                    remote_v = match.group(1).strip()
-                    if remote_v != CURRENT_VERSION:
-                        if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar?") == QMessageBox.StandardButton.Yes:
-                            self.download_and_install()
-                    else: self.status.setText(f"Aktuell (v{CURRENT_VERSION})")
+                data = r.json()
+                remote_v = data.get("version", "")
+                if remote_v != CURRENT_VERSION:
+                    if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar. Jetzt laden?") == QMessageBox.StandardButton.Yes:
+                        self.download_and_install()
+                else: self.status.setText(f"Aktuell (v{CURRENT_VERSION})")
         except: self.status.setText("Verbindungsfehler")
 
     def download_and_install(self):
@@ -274,4 +322,7 @@ class GuardianSuite(QMainWindow):
         self.status.setText("Profil gesichert.")
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv); w = GuardianSuite(); w.show(); sys.exit(app.exec())
+    app = QApplication(sys.argv)
+    w = GuardianSuite()
+    w.show()
+    sys.exit(app.exec())
