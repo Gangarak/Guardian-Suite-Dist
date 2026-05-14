@@ -11,7 +11,7 @@ from PyQt6.QtGui import QIntValidator
 
 # Konfiguration - Marcel (Oberhausen)
 base_path = "C:\\Users\\Marcel\\Guardian-Suite"
-CURRENT_VERSION = "0.1.28"
+CURRENT_VERSION = "0.1.29"
 
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
