@@ -8,9 +8,9 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIntValidator
 
-# Konfiguration - Marcel (Oberhausen)
+# Konfiguration
 base_path = "C:\\Users\\Marcel\\Guardian-Suite"
-CURRENT_VERSION = 2026.37 
+CURRENT_VERSION = 2026.37
 
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
@@ -126,7 +126,6 @@ class GuardianSuite(QMainWindow):
             f.write(f"@echo off\n")
             f.write(f"timeout /t 1 /nobreak > nul\n")
             f.write(f"move /y \"{base_path}\\main_new.py\" \"{base_path}\\main.py\"\n")
-            # Wir starten die neue Version und beenden das Batch-Fenster sofort
             f.write(f"start /b pythonw \"{base_path}\\main.py\"\n")
             f.write(f"exit\n")
         
