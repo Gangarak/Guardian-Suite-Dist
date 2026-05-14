@@ -14,7 +14,7 @@ from PyQt6.QtGui import QIntValidator, QPainter, QColor, QPen, QFont
 
 # Konfiguration - Marcel (Oberhausen)
 base_path = r"C:\Users\Marcel\Guardian-Suite"
-CURRENT_VERSION = "0.1.33"
+CURRENT_VERSION = "0.1.34"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
 
@@ -78,16 +78,22 @@ class DashboardWindow(QWidget):
             self.dragPos = e.globalPosition().toPoint()
 
 class HUDOverlay(QWidget):
-    """Kompaktes Overlay mit CPU, GPU, RAM und Netzwerk."""
+    """Kompaktes, durchklickbares Overlay für die Bildschirmecke."""
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        # WindowStaysOnTop + Tool + WindowTransparentForInput macht es durchklickbar
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.Tool |
+            Qt.WindowType.WindowTransparentForInput
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(280, 120)
         
         layout = QVBoxLayout(self)
         self.container = QWidget()
-        self.container.setStyleSheet("background-color: rgba(5, 5, 5, 220); border: 1px solid #00ff99; border-radius: 8px;")
+        self.container.setStyleSheet("background-color: rgba(5, 5, 5, 180); border: 1px solid #00ff99; border-radius: 8px;")
         grid = QVBoxLayout(self.container)
         
         self.l_cpu = self.create_label("CPU: 0%")
@@ -106,8 +112,8 @@ class HUDOverlay(QWidget):
         self.timer.timeout.connect(self.update_stats)
         self.timer.start(1000)
         
-        self.dragPos = QPoint()
-        self.move(30, 30)
+        # Fest verankert oben links (10px Abstand)
+        self.move(10, 10)
 
     def create_label(self, text):
         lbl = QLabel(text)
@@ -120,17 +126,9 @@ class HUDOverlay(QWidget):
         now_net = psutil.net_io_counters().bytes_recv
         net_val = round((now_net - self.last_net) / (1024 * 1024), 1)
         self.last_net = now_net
-        
         self.l_cpu.setText(f"CPU: {cpu}%")
         self.l_ram.setText(f"RAM: {ram}%")
         self.l_net.setText(f"NET: {net_val} MB/s")
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton: self.dragPos = e.globalPosition().toPoint()
-    def mouseMoveEvent(self, e):
-        if e.buttons() == Qt.MouseButton.LeftButton:
-            self.move(self.pos() + e.globalPosition().toPoint() - self.dragPos)
-            self.dragPos = e.globalPosition().toPoint()
 
 class GuardianSuite(QMainWindow):
     def __init__(self):
