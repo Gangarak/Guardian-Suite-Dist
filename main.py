@@ -1,4 +1,5 @@
-﻿import sys
+@'
+import sys
 import os
 import json
 import subprocess
@@ -8,13 +9,12 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIntValidator
 
-# Grundkonfiguration
+# Konfiguration - Marcel (Oberhausen)
 base_path = "C:\\Users\\Marcel\\Guardian-Suite"
 CURRENT_VERSION = 2026.36 
 
-# Deine GitHub-Links
-VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/refs/heads/main/version.json"
-UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/refs/heads/main/main.py"
+VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
+UPDATE_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/main.py"
 
 class FeedbackDialog(QDialog):
     def __init__(self, parent=None):
@@ -55,11 +55,9 @@ class GuardianSuite(QMainWindow):
         self.setStyleSheet("QMainWindow { background-color: #050505; } QWidget { color: #e0e0e0; font-family: 'Segoe UI'; }")
         central = QWidget(); self.setCentralWidget(central); layout = QVBoxLayout(central)
         layout.setContentsMargins(25, 25, 25, 25); layout.setSpacing(15)
-        
         header = QLabel("GUARDIAN SUITE"); header.setStyleSheet("font-size: 28px; color: #00ff99; font-weight: 900;")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter); layout.addWidget(header)
         
-        # Obere Buttons
         top_row = QHBoxLayout()
         btn_upd = QPushButton("💾 UPDATE CHECK"); btn_upd.clicked.connect(self.check_for_updates)
         btn_fdb = QPushButton("📣 FEEDBACK"); btn_fdb.clicked.connect(self.send_feedback)
@@ -68,7 +66,6 @@ class GuardianSuite(QMainWindow):
             top_row.addWidget(b)
         layout.addLayout(top_row)
 
-        # Profil-Verwaltung
         layout.addWidget(QLabel("PROFIL VERWALTUNG:"))
         self.profile_box = QComboBox(); self.profile_box.addItems(self.profiles.keys())
         self.profile_box.currentIndexChanged.connect(self.switch_profile); layout.addWidget(self.profile_box)
@@ -103,18 +100,14 @@ class GuardianSuite(QMainWindow):
     def check_for_updates(self):
         self.status.setText("Prüfe Version...")
         try:
-            response = requests.get(VERSION_URL, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                remote_version = data.get("version", 0)
-                if remote_version > CURRENT_VERSION:
-                    res = QMessageBox.question(self, "Update", f"v{remote_version} verfügbar. Jetzt laden?")
-                    if res == QMessageBox.StandardButton.Yes:
+            r = requests.get(VERSION_URL, timeout=5)
+            if r.status_code == 200:
+                remote_v = r.json().get("version", 0)
+                if remote_v > CURRENT_VERSION:
+                    if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar. Jetzt laden?") == QMessageBox.StandardButton.Yes:
                         self.download_and_install()
-                else:
-                    self.status.setText("Software ist aktuell.")
-            else:
-                self.status.setText("Server-Fehler.")
+                else: self.status.setText("Software ist aktuell.")
+            else: self.status.setText(f"Fehler: {r.status_code}")
         except: self.status.setText("Keine Verbindung.")
 
     def download_and_install(self):
@@ -125,18 +118,22 @@ class GuardianSuite(QMainWindow):
                 new_path = os.path.join(base_path, "main_new.py")
                 with open(new_path, "wb") as f: f.write(r.content)
                 self.trigger_updater()
-            else: self.status.setText("Download fehlgeschlagen.")
-        except: self.status.setText("Fehler beim Download.")
+            else: self.status.setText(f"Download-Fehler (Code: {r.status_code})")
+        except: self.status.setText("Netzwerkfehler.")
 
     def trigger_updater(self):
         batch_path = os.path.join(base_path, "updater.bat")
         with open(batch_path, "w") as f:
-            f.write(f"@echo off\ntimeout /t 2 /nobreak > nul\n")
+            f.write(f"@echo off\n")
+            f.write(f"timeout /t 1 /nobreak > nul\n")
             f.write(f"move /y \"{base_path}\\main_new.py\" \"{base_path}\\main.py\"\n")
-            f.write(f"start python \"{base_path}\\main.py\"\n")
-            f.write(f"del \"%~f0\"\n")
+            # Wir starten die neue Version und beenden das Batch-Fenster sofort
+            f.write(f"start /b pythonw \"{base_path}\\main.py\"\n")
+            f.write(f"exit\n")
+        
         subprocess.Popen([batch_path], shell=True)
-        self.close(); sys.exit()
+        self.close()
+        sys.exit()
 
     def send_feedback(self):
         dlg = FeedbackDialog(self)
@@ -148,8 +145,7 @@ class GuardianSuite(QMainWindow):
                 try:
                     r = requests.post(webhook_url, json=payload, timeout=5)
                     if r.status_code == 204: self.status.setText("Gesendet!")
-                    else: self.status.setText(f"Fehler: {r.status_code}")
-                except: self.status.setText("Webhook-Fehler.")
+                except: self.status.setText("Fehler.")
 
     def switch_profile(self):
         p = self.profiles.get(self.profile_box.currentText(), {"cpu": 80, "gpu": 70, "ram": 95})
@@ -161,7 +157,7 @@ class GuardianSuite(QMainWindow):
             self.profiles[name] = {"cpu": int(self.in_cpu.text()), "gpu": int(self.in_gpu.text()), "ram": int(self.in_ram.text())}
             with open(self.config_path, "w") as f: json.dump(self.profiles, f, indent=4)
             self.status.setText(f"Profil '{name}' gesichert.")
-        except: self.status.setText("Nur Zahlen erlaubt!")
+        except: self.status.setText("Nur Zahlen!")
 
     def toggle(self, key, file, btn):
         path = os.path.join(base_path, file)
@@ -174,3 +170,4 @@ class GuardianSuite(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv); w = GuardianSuite(); w.show(); sys.exit(app.exec())
+'@ | Out-File -FilePath "C:\Users\Marcel\Guardian-Suite\main.py" -Encoding utf8 -Force
