@@ -17,7 +17,7 @@ else:
     exe_path = None
 
 # KONFIGURATION
-CURRENT_VERSION = "0.1.38"
+CURRENT_VERSION = "0.1.39"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL_EXE = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/GuardianSuite.exe"
 
