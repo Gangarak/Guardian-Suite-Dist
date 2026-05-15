@@ -5,8 +5,10 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QTimer, QRectF, QPoint
 from PyQt6.QtGui import QIntValidator, QPainter, QColor, QPen, QFont
 
+# Unterdrückt SSL-Warnungen
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Pfad-Logik für den EXE-Betrieb
 if getattr(sys, 'frozen', False):
     base_path = os.path.dirname(sys.executable)
     exe_path = sys.executable
@@ -14,7 +16,7 @@ else:
     base_path = os.path.dirname(os.path.abspath(__file__))
     exe_path = None
 
-# AUF VERSION 0.1.38 GEÄNDERT
+# KONFIGURATION
 CURRENT_VERSION = "0.1.38"
 VERSION_URL = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/version.json"
 UPDATE_URL_EXE = "https://raw.githubusercontent.com/Gangarak/Guardian-Suite-Dist/main/GuardianSuite.exe"
@@ -86,6 +88,7 @@ class GuardianSuite(QMainWindow):
     def __init__(self):
         super().__init__(); self.config_path = os.path.join(base_path, "profiles.json"); self.dash_window = None; self.hud_overlay = None
         self.load_config(); self.setWindowTitle(f"Guardian Suite v{CURRENT_VERSION}"); self.setFixedSize(400, 850); self.init_ui()
+    
     def load_config(self):
         d = {"Standard": {"cpu": 80, "gpu": 70, "ram": 95}}
         if os.path.exists(self.config_path):
@@ -93,9 +96,11 @@ class GuardianSuite(QMainWindow):
                 with open(self.config_path, "r") as f: self.profiles = json.load(f)
             except: self.profiles = d
         else: self.profiles = d
+
     def get_current_limits(self):
         try: return {"cpu": int(self.in_cpu.text()), "gpu": int(self.in_gpu.text()), "ram": int(self.in_ram.text())}
         except: return {"cpu": 80, "gpu": 70, "ram": 95}
+
     def init_ui(self):
         self.setStyleSheet("QMainWindow { background-color: #050505; } QWidget { color: #e0e0e0; font-family: 'Segoe UI'; }")
         central = QWidget(); self.setCentralWidget(central); layout = QVBoxLayout(central); layout.setContentsMargins(25, 25, 25, 25); layout.setSpacing(15)
@@ -109,15 +114,18 @@ class GuardianSuite(QMainWindow):
         self.status = QLabel("System bereit"); self.status.setAlignment(Qt.AlignmentFlag.AlignCenter); self.status.setStyleSheet("color: #00ff99; font-style: italic;"); layout.addWidget(self.status); layout.addStretch()
         self.b_dash = QPushButton("DASHBOARD STARTEN"); self.b_dash.clicked.connect(self.toggle_dashboard); self.b_hud = QPushButton("HUD OVERLAY AKTIVIEREN"); self.b_hud.clicked.connect(self.toggle_hud)
         for b in [self.b_dash, self.b_hud]: b.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;"); layout.addWidget(b)
+
     def add_row(self, layout, label):
         row = QHBoxLayout(); row.addWidget(QLabel(label)); edit = QLineEdit(); edit.setFixedWidth(60); edit.setAlignment(Qt.AlignmentFlag.AlignCenter); edit.setValidator(QIntValidator(1, 100)); edit.setStyleSheet("color: #00ff99; background: #000; border: 1px solid #00ff99; padding: 5px;"); row.addStretch(); row.addWidget(edit); layout.addLayout(row); return edit
+
     def toggle_dashboard(self):
         if self.dash_window is None: self.dash_window = DashboardWindow(self); self.dash_window.show(); self.b_dash.setText("DASHBOARD STOPPEN"); self.b_dash.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else: self.dash_window.close(); self.dash_window = None; self.b_dash.setText("DASHBOARD STARTEN"); self.b_dash.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
+
     def toggle_hud(self):
         if self.hud_overlay is None: self.hud_overlay = HUDOverlay(self); self.hud_overlay.show(); self.b_hud.setText("HUD DEAKTIVIEREN"); self.b_hud.setStyleSheet("border: 1px solid #ff4444; padding: 15px; font-weight: bold;")
         else: self.hud_overlay.close(); self.hud_overlay = None; self.b_hud.setText("HUD OVERLAY AKTIVIEREN"); self.b_hud.setStyleSheet("border: 1px solid #00ff99; padding: 15px; font-weight: bold;")
-    
+
     def check_for_updates(self):
         self.status.setText("Prüfe GitHub...")
         try:
@@ -127,26 +135,45 @@ class GuardianSuite(QMainWindow):
                 if remote_v != CURRENT_VERSION:
                     if QMessageBox.question(self, "Update", f"v{remote_v} verfügbar. Installieren?") == QMessageBox.StandardButton.Yes: self.download_and_install()
                 else: self.status.setText(f"v{CURRENT_VERSION} aktuell.")
-        except: self.status.setText("Netzwerkfehler")
+            else: self.status.setText(f"HTTP Fehler: {r.status_code}")
+        except: self.status.setText("Verbindung fehlgeschlagen")
 
     def download_and_install(self):
         if not getattr(sys, 'frozen', False):
-            QMessageBox.warning(self, "Fehler", "Update nur in der EXE-Version möglich!"); return
+            self.status.setText("Update nur als EXE möglich.")
+            return
         self.status.setText("Lade Update...")
         try:
-            r = requests.get(UPDATE_URL_EXE, timeout=30, verify=False)
+            r = requests.get(UPDATE_URL_EXE, timeout=60, verify=False, stream=True)
             if r.status_code == 200:
                 new_exe = os.path.join(base_path, "GuardianSuite_new.exe")
-                with open(new_exe, "wb") as f: f.write(r.content)
-                self.apply_update_and_exit(new_exe)
-        except: self.status.setText("Download fehlgeschlagen")
+                with open(new_exe, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        if chunk: f.write(chunk)
+                self.status.setText("Download fertig!")
+                QTimer.singleShot(1000, lambda: self.apply_update_and_exit(new_exe))
+            else:
+                self.status.setText(f"Download-Fehler: {r.status_code}")
+        except Exception as e:
+            self.status.setText("Fehler beim Laden.")
 
     def apply_update_and_exit(self, new_exe_path):
         batch_path = os.path.join(base_path, "apply_update.bat")
-        old_exe = exe_path
-        with open(batch_path, "w") as f:
-            f.write(f'@echo off\ntimeout /t 2 /nobreak > nul\ndel /f "{old_exe}"\nren "{new_exe_path}" "GuardianSuite.exe"\nstart "" "GuardianSuite.exe"\ndel "%~f0"\nexit\n')
-        subprocess.Popen([batch_path], shell=True); self.close(); sys.exit()
+        current_exe = exe_path
+        batch_content = f'''@echo off
+timeout /t 2 /nobreak > nul
+taskkill /F /IM GuardianSuite.exe /T > nul 2>&1
+del /f /q "{current_exe}"
+ren "{new_exe_path}" "GuardianSuite.exe"
+start "" "GuardianSuite.exe"
+del "%~f0"
+exit
+'''
+        try:
+            with open(batch_path, "w") as f: f.write(batch_content)
+            subprocess.Popen([batch_path], shell=True)
+            self.close(); sys.exit()
+        except: self.status.setText("Batch-Fehler!")
 
     def send_feedback(self):
         dlg = QDialog(self); dlg.setWindowTitle("Feedback"); dlg.setFixedSize(300, 200); l = QVBoxLayout(dlg); e = QTextEdit(); l.addWidget(e); b = QPushButton("Senden"); b.clicked.connect(dlg.accept); l.addWidget(b)
@@ -155,9 +182,11 @@ class GuardianSuite(QMainWindow):
             if msg:
                 try: requests.post("https://discord.com/api/webhooks/1504479025781936339/NvoI5gDJnYqFZgpE2_TXgXQqEG8q9Ofs4SU5k1ziQfbfY7F8du-pIYKoctw8gYPGUQfm", json={"content": f"**Feedback v{CURRENT_VERSION}:**\n> {msg}"}, verify=False)
                 except: pass
+
     def switch_profile(self):
         p = self.profiles.get(self.profile_box.currentText(), {"cpu": 80, "gpu": 70, "ram": 95})
         self.in_cpu.setText(str(p.get("cpu", 80))); self.in_gpu.setText(str(p.get("gpu", 70))); self.in_ram.setText(str(p.get("ram", 95)))
+
     def save_profile(self):
         n = self.profile_box.currentText(); self.profiles[n] = {"cpu": int(self.in_cpu.text()), "gpu": int(self.in_gpu.text()), "ram": int(self.in_ram.text())}
         with open(self.config_path, "w") as f: json.dump(self.profiles, f, indent=4)
